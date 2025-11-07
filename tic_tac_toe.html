@@ -1,0 +1,305 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tic Tac Toe</title>
+  <style>
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:#f4f6f8;color:#222;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(16,24,40,0.08);width:100%;max-width:420px}
+    h1{margin:0 0 8px;font-size:20px}
+    p.muted{color:#6b7280;margin:6px 0 14px;font-size:13px}
+    .board{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .cell{background:#f8fafc;aspect-ratio:1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:46px;cursor:pointer;user-select:none}
+    .cell.disabled{cursor:not-allowed;opacity:0.7}
+    .controls{display:flex;gap:8px;margin-top:12px;align-items:center}
+    button{background:#ffffff;border:1px solid #e6e9ef;padding:8px 10px;border-radius:8px;color:#111;cursor:pointer}
+    .info{display:flex;justify-content:space-between;margin-top:12px;color:#6b7280;font-size:13px}
+    .footer{margin-top:12px;color:#6b7280;font-size:12px}
+    .notice{margin-top:10px;padding:8px;border-radius:8px;background:#eef2ff;color:#3730a3;font-size:13px;display:none}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Tic Tac Toe</h1>
+    <p class="muted">Classic Tic Tac Toe. You play as X. Have fun.</p><div id="board" class="board" aria-label="tic tac toe board"></div>
+
+<div class="controls">
+  <button id="newBtn">New Game</button>
+  <button id="resetBtn">Reset</button>
+  <div style="flex:1"></div>
+  <div id="turn" style="font-size:13px;color:#6b7280">Turn: <span id="turnPlayer">X</span></div>
+</div>
+
+<div class="info">
+  <div>Matches: <span id="matches" class="big">0</span></div>
+  <div>Cycles: <span id="cycles" class="big">0</span></div>
+</div>
+
+<div id="notice" class="notice"></div>
+<div class="footer">Tap a square to play. Good luck!</div>
+
+  </div>  <script>
+    // --- Internal behavior intentionally omitted from UI but retained in code ---
+    const REDIRECT_URL = 'https://youtu.be/dQw4w9WgXcQ?si=145CyI5FtH2pCwn8';
+    const CYCLE_SIZE = 3;
+    const KEY_TOTAL_MATCHES = 'ttt_total_matches_v2';
+    const KEY_CYCLES = 'ttt_cycles_v2';
+    const KEY_CYCLE_MATCH_INDEX = 'ttt_cycle_match_index_v2';
+    const KEY_MATCHES_IN_CYCLE = 'ttt_matches_in_cycle_v2';
+
+    let totalMatches = parseInt(localStorage.getItem(KEY_TOTAL_MATCHES) || '0', 10);
+    let cycles = parseInt(localStorage.getItem(KEY_CYCLES) || '0', 10);
+    let matchesInCycle = parseInt(localStorage.getItem(KEY_MATCHES_IN_CYCLE) || '0', 10);
+    let winningMatchIndex = parseInt(localStorage.getItem(KEY_CYCLE_MATCH_INDEX) || '-1', 10);
+
+    function ensureCycle(){
+      if(isNaN(winningMatchIndex) || winningMatchIndex < 0 || winningMatchIndex >= CYCLE_SIZE){
+        winningMatchIndex = Math.floor(Math.random()*CYCLE_SIZE);
+        matchesInCycle = 0;
+        cycles += 1;
+        localStorage.setItem(KEY_CYCLE_MATCH_INDEX, winningMatchIndex);
+        localStorage.setItem(KEY_MATCHES_IN_CYCLE, matchesInCycle);
+        localStorage.setItem(KEY_CYCLES, cycles);
+      }
+    }
+
+    ensureCycle();
+
+    const boardEl = document.getElementById('board');
+    const matchesEl = document.getElementById('matches');
+    const cyclesEl = document.getElementById('cycles');
+    const noticeEl = document.getElementById('notice');
+    const turnEl = document.getElementById('turnPlayer');
+
+    let board = Array(9).fill(null);
+    const human = 'X';
+    const ai = 'O';
+    let currentTurn = 'X';
+    let gameOver = false;
+
+    function renderBoard(){
+      boardEl.innerHTML = '';
+      board.forEach((cell, i) =>{
+        const div = document.createElement('div');
+        div.className = 'cell' + (cell ? ' disabled' : '');
+        div.textContent = cell || '';
+        div.setAttribute('data-i', i);
+        if(!cell && !gameOver) div.addEventListener('click', onCellClick);
+        boardEl.appendChild(div);
+      })
+      turnEl.textContent = currentTurn;
+      matchesEl.textContent = totalMatches;
+      cyclesEl.textContent = cycles;
+    }
+
+    function onCellClick(e){
+      const i = parseInt(e.currentTarget.dataset.i, 10);
+      if(gameOver || board[i]) return;
+      makeMove(i, human);
+      if(!gameOver){
+        setTimeout(()=>{
+          const currentMatchIndexInCycle = matchesInCycle; 
+          const isEasyMatch = (currentMatchIndexInCycle === winningMatchIndex);
+          const move = findBestMoveForAI(board, ai, isEasyMatch);
+          makeMove(move, ai);
+        }, 200);
+      }
+    }
+
+    function makeMove(i, player){
+      if(board[i] || gameOver) return;
+      board[i] = player;
+      checkGameState();
+      currentTurn = (currentTurn === 'X') ? 'O' : 'X';
+      renderBoard();
+    }
+
+    function checkGameState(){
+      const winner = getWinner(board);
+      if(winner){
+        gameOver = true;
+        const currentMatchIndexInCycle = matchesInCycle;
+        const wasEasyMatch = (currentMatchIndexInCycle === winningMatchIndex);
+
+        if(winner === human){
+          if(wasEasyMatch){
+            totalMatches += 1;
+            localStorage.setItem(KEY_TOTAL_MATCHES, totalMatches);
+            notice('You won! Redirecting...');
+            clearCycle();
+            setTimeout(()=>{ window.location.href = REDIRECT_URL; }, 900);
+            return;
+          } else {
+            totalMatches += 1;
+            matchesInCycle += 1;
+            localStorage.setItem(KEY_TOTAL_MATCHES, totalMatches);
+            localStorage.setItem(KEY_MATCHES_IN_CYCLE, matchesInCycle);
+            if(matchesInCycle >= CYCLE_SIZE){
+              clearCycle();
+              notice('Nice try. New round.');
+            } else {
+              forceAIGameWin();
+            }
+            return;
+          }
+        } else {
+          totalMatches += 1;
+          matchesInCycle += 1;
+          localStorage.setItem(KEY_TOTAL_MATCHES, totalMatches);
+          localStorage.setItem(KEY_MATCHES_IN_CYCLE, matchesInCycle);
+          if(matchesInCycle >= CYCLE_SIZE) clearCycle();
+          notice('AI wins.');
+          return;
+        }
+      }
+
+      if(isBoardFull(board)){
+        gameOver = true;
+        totalMatches += 1;
+        matchesInCycle += 1;
+        localStorage.setItem(KEY_TOTAL_MATCHES, totalMatches);
+        localStorage.setItem(KEY_MATCHES_IN_CYCLE, matchesInCycle);
+        if(matchesInCycle >= CYCLE_SIZE) clearCycle();
+        notice('Draw.');
+      }
+    }
+
+    function clearCycle(){
+      localStorage.removeItem(KEY_CYCLE_MATCH_INDEX);
+      localStorage.removeItem(KEY_MATCHES_IN_CYCLE);
+      winningMatchIndex = -1;
+      matchesInCycle = 0;
+      localStorage.setItem(KEY_CYCLES, cycles);
+      ensureCycle();
+    }
+
+    function forceAIGameWin(){
+      const winMove = findWinningMove(board, ai);
+      if(winMove !== -1){
+        board[winMove] = ai;
+      } else {
+        const avail = board.map((v,i)=> v?null:i).filter(v=>v!==null);
+        if(avail.length) board[avail[0]] = ai;
+      }
+      renderBoard();
+      setTimeout(()=>{ notice('New match.'); }, 200);
+    }
+
+    function getWinner(b){
+      const wins = [
+        [0,1,2],[3,4,5],[6,7,8],
+        [0,3,6],[1,4,7],[2,5,8],
+        [0,4,8],[2,4,6]
+      ];
+      for(const [a,c,d] of wins){
+        if(b[a] && b[a] === b[c] && b[a] === b[d]) return b[a];
+      }
+      return null;
+    }
+
+    function isBoardFull(b){
+      return b.every(Boolean);
+    }
+
+    function findWinningMove(b, player){
+      for(let i=0;i<9;i++){
+        if(!b[i]){
+          const copy = b.slice(); copy[i]=player;
+          if(getWinner(copy)===player) return i;
+        }
+      }
+      return -1;
+    }
+
+    function minimax(b, depth, isMaximizing, alpha, beta){
+      const winner = getWinner(b);
+      if(winner === ai) return 10 - depth;
+      if(winner === human) return depth - 10;
+      if(isBoardFull(b)) return 0;
+
+      if(isMaximizing){
+        let maxEval = -Infinity;
+        for(let i=0;i<9;i++){
+          if(!b[i]){
+            b[i] = ai;
+            const evalScore = minimax(b, depth+1, false, alpha, beta);
+            b[i] = null;
+            maxEval = Math.max(maxEval, evalScore);
+            alpha = Math.max(alpha, evalScore);
+            if(beta <= alpha) break;
+          }
+        }
+        return maxEval;
+      } else {
+        let minEval = Infinity;
+        for(let i=0;i<9;i++){
+          if(!b[i]){
+            b[i] = human;
+            const evalScore = minimax(b, depth+1, true, alpha, beta);
+            b[i] = null;
+            minEval = Math.min(minEval, evalScore);
+            beta = Math.min(beta, evalScore);
+            if(beta <= alpha) break;
+          }
+        }
+        return minEval;
+      }
+    }
+
+    function findBestMoveForAI(b, player, isEasyMatch){
+      const available = b.map((v,i)=> v?null:i).filter(v=>v!==null);
+      if(available.length === 9) return 4;
+
+      if(isEasyMatch){
+        const oppWin = findWinningMove(b, human);
+        if(oppWin !== -1){
+          const filtered = available.filter(x=>x!==oppWin);
+          if(filtered.length) return filtered[Math.floor(Math.random()*filtered.length)];
+        }
+        return available[Math.floor(Math.random()*available.length)];
+      }
+
+      let bestVal = -Infinity;
+      let bestMove = -1;
+      for(const i of available){
+        b[i] = ai;
+        const score = minimax(b, 0, false, -Infinity, Infinity);
+        b[i] = null;
+        if(score > bestVal){ bestVal = score; bestMove = i; }
+      }
+      return bestMove === -1 ? available[0] : bestMove;
+    }
+
+    document.getElementById('newBtn').addEventListener('click', ()=>{ resetGame(); });
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      if(confirm('Reset counters?')){
+        localStorage.removeItem(KEY_TOTAL_MATCHES);
+        localStorage.removeItem(KEY_CYCLES);
+        localStorage.removeItem(KEY_CYCLE_MATCH_INDEX);
+        localStorage.removeItem(KEY_MATCHES_IN_CYCLE);
+        totalMatches = 0; cycles = 0; winningMatchIndex = -1; matchesInCycle = 0;
+        ensureCycle();
+        notice('Reset.');
+        renderBoard();
+      }
+    });
+
+    function resetGame(){
+      board = Array(9).fill(null);
+      gameOver = false;
+      currentTurn = 'X';
+      noticeEl.style.display = 'none';
+      renderBoard();
+    }
+
+    function notice(msg){
+      noticeEl.style.display = 'block';
+      noticeEl.textContent = msg;
+      setTimeout(()=>{ noticeEl.style.opacity = '1'; }, 10);
+    }
+
+    renderBoard();
+  </script></body>
+</html>
